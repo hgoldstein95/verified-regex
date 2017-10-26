@@ -1,5 +1,5 @@
--R ./cpdtlib Cpdt
 -arg -noglob
-Str.v
+CpdtTactics.v
+DecEq.v
 EnsembleLemmas.v
 Main.v
