@@ -1,0 +1,124 @@
+\documentclass{article}
+\usepackage[margin=2cm]{geometry}
+\usepackage{minted}
+\usepackage{hyperref}
+\usepackage[bottom]{footmisc}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  filecolor=magenta,
+  urlcolor=cyan,
+}
+
+\author{Harrison Goldstein - hjg42}
+\title{CS 6115 Project Proposal}
+\date{October 25, 2017}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+This semester I was introduced to Syntactic Brzozowski derivatives of regular
+expressions. In fact, I learned about it two unrelated times---once in Nate
+Foster's Network PL class, and once by Dexter Kozen when he was a guest lecturer
+in Theory of Computing.
+
+I was so interested in the idea that I wrote a blog post about
+it,\footnote{\url{http://harrisongoldste.in/languages/2017/09/30/derivatives-of-regular-expressions.html}}
+and I wanted to do some work with it. I started implementing an algorithm for
+matching strings using derivatives, and I thought it would be fun to prove it
+correct. (My implementation of the algorithm can be found in appendix A.) I
+quickly found that this wasn't as easy as I thought it would be.
+
+\section{Minimum Goal}
+My first goal with this project is to prove that my \verb|re_match| function
+accurately decides whether a given regular expression matches a given string.
+This will first require me to model correctness in some way, and then to show
+that the algorithm is correct under that model. The plan is as follows:
+\begin{enumerate}
+  \item Define a relation \verb|denote : re -> Ensemble str -> Prop|, which
+    relates regular expressions to the sets that they denote.
+  \item Show, informally, that \verb|denote| is the correct denotational
+    semantics for regular expressions.
+  \item Prove the following theorem.
+\begin{minted}{coq}
+  Theorem re_match_correct :
+    forall r l, denote r l -> (forall s, In str l s <-> re_match r s = true).
+\end{minted}{coq}
+\end{enumerate}
+I hope to be able to do this without too much trouble, but the \verb|Ensembles|
+package is missing a number of important lemmas (e.g. $A \cup B = B \cup A$,
+etc.), so I will need to prove some auxiliary facts.
+
+\section{Extensions}
+I see a lot of ways for me to extend my project past just a correct matching
+algorithm.
+\begin{itemize}
+  \item {\bf Verified \verb|grep|.} Since I will already have a verified regular
+    expression matcher, I could theoretically implement some basic functionality
+    of \verb|grep|. This would give me experience with code extraction and
+    integrating extracted code with the outside world.
+  \item {\bf Theory results.} With a model of regular expressions and their
+    denotational semantics, I could prove some mathematical facts about regular
+    languages.
+  \item {\bf Extension to KATs.} It is well known that Brzozowski derivatives
+    work with KATs as well. I could add tests to my language and prove more
+    general facts about Kleene Algebras and KATs.
+\end{itemize}
+
+\pagebreak
+\appendix
+\section{Full Implementation}
+\begin{minted}{coq}
+Class DecEq (T : Type) := dec_eq : forall x y : T, {x = y} + {x <> y}.
+
+Section Regex.
+  Context {T : Type}.
+  Context (dec_eq_ : DecEq T).
+
+  Definition str := list T.
+
+  Inductive re : Type :=
+  | Phi : re
+  | Char : T -> re
+  | Alt : re -> re -> re
+  | Con : re -> re -> re
+  | Star : re -> re.
+
+  Fixpoint contains_empty (r : re) : bool :=
+    match r with
+    | Phi => false
+    | Char _ => false
+    | Alt r1 r2 => contains_empty r1 || contains_empty r2
+    | Con r1 r2 => contains_empty r1 && contains_empty r2
+    | Star _ => true
+    end.
+
+  Fixpoint deriv (c : T) (r : re) : re :=
+    match r with
+    | Phi => Phi
+    | Char c' =>
+      match dec_eq c c' with
+      | left _ => Star Phi
+      | right _ => Phi
+      end
+    | Alt r1 r2 => Alt (deriv c r1) (deriv c r2)
+    | Con r1 r2 =>
+      if contains_empty r1 then
+        Alt (Con (deriv c r1) r2) (deriv c r2)
+      else
+        Con (deriv c r1) r2
+    | Star r => Con (deriv c r) (Star r)
+    end.
+
+  Fixpoint deriv_str (s : str) (r : re) : re :=
+    match s with
+    | [] => r
+    | c :: s' => deriv_str s' (deriv c r)
+    end.
+
+  Definition re_match (r : re) (s : str) := contains_empty (deriv_str s r).
+End Regex.
+\end{minted}
+
+\end{document}

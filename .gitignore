@@ -2,3 +2,11 @@
 *.vo
 *.d
 *.bak
+*.glob
+*.dvi
+*.log
+*.out
+*.pdf
+*.gz
+doc/_minted-proposal
+doc/auto

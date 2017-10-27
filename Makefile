@@ -55,12 +55,11 @@ vo_to_obj = $(addsuffix .o,\
 ##########################
 
 COQLIBS?=\
-  -R "." Top\
-  -I "."
+  -Q "." ""
 COQCHKLIBS?=\
-  -R "." Top
+  -R "." ""
 COQDOCLIBS?=\
-  -R "." Top
+  -R "." ""
 
 ##########################
 #                        #
@@ -70,7 +69,6 @@ COQDOCLIBS?=\
 
 
 OPT?=
-OTHERFLAGS=-noglob
 COQDEP?="$(COQBIN)coqdep" -c
 COQFLAGS?=-q $(OPT) $(COQLIBS) $(OTHERFLAGS) $(COQ_XML)
 COQCHKFLAGS?=-silent -o
@@ -196,22 +194,22 @@ userinstall:
 
 install:
 	cd "." && for i in $(VOFILES) $(VFILES) $(GLOBFILES) $(NATIVEFILES) $(CMOFILES) $(CMIFILES) $(CMAFILES); do \
-	 install -d "`dirname "$(DSTROOT)"$(COQLIBINSTALL)/Top/$$i`"; \
-	 install -m 0644 $$i "$(DSTROOT)"$(COQLIBINSTALL)/Top/$$i; \
+	 install -d "`dirname "$(DSTROOT)"$(COQLIBINSTALL)//$$i`"; \
+	 install -m 0644 $$i "$(DSTROOT)"$(COQLIBINSTALL)//$$i; \
 	done
 
 install-doc:
-	install -d "$(DSTROOT)"$(COQDOCINSTALL)/Top/html
+	install -d "$(DSTROOT)"$(COQDOCINSTALL)/$(INSTALLDEFAULTROOT)/html
 	for i in html/*; do \
-	 install -m 0644 $$i "$(DSTROOT)"$(COQDOCINSTALL)/Top/$$i;\
+	 install -m 0644 $$i "$(DSTROOT)"$(COQDOCINSTALL)/$(INSTALLDEFAULTROOT)/$$i;\
 	done
 
 uninstall_me.sh: Makefile
 	echo '#!/bin/sh' > $@
-	printf 'cd "$${DSTROOT}"$(COQLIBINSTALL)/Top && rm -f $(VOFILES) $(VFILES) $(GLOBFILES) $(NATIVEFILES) $(CMOFILES) $(CMIFILES) $(CMAFILES) && find . -type d -and -empty -delete\ncd "$${DSTROOT}"$(COQLIBINSTALL) && find "Top" -maxdepth 0 -and -empty -exec rmdir -p \{\} \;\n' >> "$@"
-	printf 'cd "$${DSTROOT}"$(COQDOCINSTALL)/Top \\\n' >> "$@"
+	printf 'cd "$${DSTROOT}"$(COQLIBINSTALL)/ && rm -f $(VOFILES) $(VFILES) $(GLOBFILES) $(NATIVEFILES) $(CMOFILES) $(CMIFILES) $(CMAFILES) && find . -type d -and -empty -delete\ncd "$${DSTROOT}"$(COQLIBINSTALL) && find "" -maxdepth 0 -and -empty -exec rmdir -p \{\} \;\n' >> "$@"
+	printf 'cd "$${DSTROOT}"$(COQDOCINSTALL)/$(INSTALLDEFAULTROOT) \\\n' >> "$@"
 	printf '&& rm -f $(shell find "html" -maxdepth 1 -and -type f -print)\n' >> "$@"
-	printf 'cd "$${DSTROOT}"$(COQDOCINSTALL) && find Top/html -maxdepth 0 -and -empty -exec rmdir -p \{\} \;\n' >> "$@"
+	printf 'cd "$${DSTROOT}"$(COQDOCINSTALL) && find $(INSTALLDEFAULTROOT)/html -maxdepth 0 -and -empty -exec rmdir -p \{\} \;\n' >> "$@"
 	chmod +x $@
 
 uninstall: uninstall_me.sh
@@ -237,8 +235,6 @@ uninstall: uninstall_me.sh
 	@echo "B $(COQLIB)config" >> .merlin
 	@echo "B $(COQLIB)ltac" >> .merlin
 	@echo "B $(COQLIB)engine" >> .merlin
-	@echo "B /home/harrison/Projects/verified-regex" >> .merlin
-	@echo "S /home/harrison/Projects/verified-regex" >> .merlin
 
 clean::
 	rm -f $(OBJFILES) $(OBJFILES:.o=.native) $(NATIVEFILES)

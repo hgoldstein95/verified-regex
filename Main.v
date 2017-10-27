@@ -110,21 +110,7 @@ Section Regex.
       lcrush.
   Qed.
 
-  Theorem in_denote_match :
-    forall r s l, denote r l -> In str l s -> re_match r s = true.
-  Proof.
-    intros.
-    induction H ; induction s ;
-      try (unfold re_match ;
-           match goal with
-           | [ H : In _ (Empty_set _) _ |- _ ] => invert H
-           | [ H : In _ (Singleton _ _) _ |- _ ] => invert H
-           end) ;
-    auto ;
-    simpl.
-    - remember (dec_eq a a) ; destruct s ; auto.
-    - apply orb_true_intro. invert H0.
-    - invert H0.
-      + apply IHdenote1 in H2.
+  Theorem in_denote_match : forall r l,
+      denote r l -> (forall s, In str l s -> re_match r s = true).
   Abort.
 End Regex.
