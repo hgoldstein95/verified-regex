@@ -8,5 +8,10 @@
 *.out
 *.pdf
 *.gz
-doc/_minted-proposal
 doc/auto
+*.nav
+*.snm
+*.toc
+*.vrb
+/doc/_minted-presentation
+/doc/_minted-proposal

@@ -103,7 +103,6 @@ endif
 
 VFILES:=CpdtTactics.v\
   DecEq.v\
-  EnsembleLemmas.v\
   Main.v
 
 ifneq ($(filter-out archclean clean cleanall printenv,$(MAKECMDGOALS)),)

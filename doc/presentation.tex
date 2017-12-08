@@ -1,0 +1,117 @@
+\documentclass[10pt]{beamer}
+
+\usetheme[progressbar=frametitle]{metropolis}
+\usepackage{appendixnumberbeamer}
+
+\usepackage{booktabs}
+\usepackage[scale=2]{ccicons}
+
+\usepackage{pgfplots}
+\usepgfplotslibrary{dateplot}
+
+\usepackage{xspace}
+\newcommand{\themename}{\textbf{\textsc{metropolis}}\xspace}
+
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows}
+
+\usepackage{minted}
+
+\usepackage{stmaryrd}
+
+\newcommand{\fcy}[1]{\mathcal{#1}}
+\newcommand{\lit}[1]{\text{``#1''}}
+\newcommand{\etag}[1]{\textsf{#1}}
+\newcommand{\p}[2]{\langle #1, #2 \rangle}
+\newcommand{\coq}[1]{\mintinline{coq}{#1}}
+
+\title{Standard Form Regular Expressions}
+\subtitle{Proving termination for a na\"ive regex matcher.}
+
+\date{}
+\author{Harrison Goldstein}
+\institute{Cornell University}
+% \titlegraphic{\hfill\includegraphics[height=1.5cm]{logo.pdf}}
+
+\tikzstyle{block} = [rectangle, draw, fill=orange!20, text width=5em, text centered, minimum height=3em]
+\tikzstyle{line} = [draw, -latex']
+\tikzstyle{cloud} = [draw, ellipse,fill=red!20, node distance=3cm, minimum height=3em]
+
+\begin{document}
+\maketitle
+
+\begin{frame}[fragile]{The \texttt{acc}ept Function}
+  \begin{minted}{coq}
+Fixpoint acc (r : re) (s : str) (k : str -> bool) :=
+  match r with
+  | Void => false
+  | Ept => k s
+  | Char c =>
+    match s with
+    | [] => false
+    | d :: s' => if dec_eq c d then k s' else false
+    end
+  | Alt r1 r2 => acc r1 s k || acc r2 s k
+  | Cat r1 r2 => acc r1 s (fun s' => acc r2 s' k)
+  | Star r' => k s || acc r' s (fun s' => acc r s' k)
+  end.
+  \end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{Standardization}
+  Create a function $N$ such that $\llbracket N(r) \rrbracket = r -
+  \{\varepsilon\}$.
+  \begin{align*}
+    N(\varnothing) &= \varnothing \\
+    N(\varepsilon) &= \varnothing \\
+    N(c) &= c \\
+    N(r_1 + r_2) &= N(r_1) + N(r_2) \\
+    N(r_1r_2) &= E(r_1)N(r_2) + N(r_1)E(r_2) + N(r_1)N(r_2) \\
+    N(r^*) &= N(r)N(r)^*
+  \end{align*}
+
+  $$ \boxed{\llbracket r \rrbracket = \llbracket E(r) + N(r) \rrbracket} $$
+\end{frame}
+
+\begin{frame}[fragile]{Setup for Proof}
+  \begin{enumerate}
+  \item Define \coq{standardize}, and prove it correct.
+    \begin{itemize}
+    \item Prove useful properties about \coq{null}.
+    \item Define \coq{nonnull}, and prove it captures the correct definition.
+    \item Show that \coq{r [=] standardize r}.
+    \end{itemize}
+  \item Add a parameter \coq{(n : nat)} to \coq{acc}, which acts as fuel.
+    \begin{itemize}
+    \item Coq will now accept our definition as a valid \coq{Fixpoint}.
+    \item A ``match'' is now expressed as \coq{exists n, acc r s k n = true}.
+    \end{itemize}
+  \item Ultimate goal is to prove:
+\begin{minted}{coq}
+Definition match_re r s n :=
+    acc (standardize r) s is_nil n.
+Lemma match_correct : forall r s,
+    [[ r ]] s <-> exists n, match_re r s n = true.
+\end{minted}
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}[fragile]{Current Goals}
+\begin{minted}{coq}
+        Lemma acc_sound : forall r' r s s1 s2 k,
+            s = s1 ++ s2 ->
+            r' = standardize r ->
+            k s2 = true ->
+            (exists n, acc r' s k n = true) ->
+            [[ r ]] s1.
+
+        Lemma acc_complete : forall r' r s s1 s2 k,
+            s = s1 ++ s2 ->
+            r' = standardize r ->
+            k s2 = true ->
+            [[ r ]] s1 ->
+            exists n, acc r' s k n = true.
+\end{minted}
+\end{frame}
+
+\end{document}
