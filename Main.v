@@ -10,6 +10,7 @@ Section Regex.
 
   Definition str := list T.
 
+  (** Definitions *)
   Inductive re : Type :=
   | Void : re
   | Ept : re
@@ -56,6 +57,7 @@ Section Regex.
     | [ H : in_re ?r ?s |- in_re (Alt _ ?r) ?s ] => apply In_Alt_right ; auto
     end.
 
+  (** Properties of Equality *)
   Lemma reg_eq_refl : forall r, r [=] r.
   Proof.
     dest_eq ; auto.
@@ -171,6 +173,7 @@ Section Regex.
   Hint Resolve alt_idem void_alt_unit void_cat_zero_left void_cat_zero_right
        ept_cat_unit_left ept_cat_unit_right.
 
+  (** Optimized Constructors for null *)
   Definition alt (r1 r2 : re) : re :=
     match r1, r2 with
     | Void, r => r
@@ -203,6 +206,7 @@ Section Regex.
     destruct r1 ; auto ; destruct r2 ; auto ; crush.
   Qed.
 
+  (** Null and Some Properties *)
   Fixpoint null (r : re) : re :=
     match r with
     | Void => Void
@@ -251,6 +255,7 @@ Section Regex.
     auto.
   Qed.
 
+  (** Derivatives *)
   Fixpoint deriv (r : re) (c : T) : re :=
     match r with
     | Void => Void
@@ -380,6 +385,7 @@ Section Regex.
     - apply match_re_rtl.
   Qed.
 
+  (** Nonnull and Standardization *)
   Fixpoint nonnull (r : re) : re :=
     match r with
     | Void => Void
@@ -598,6 +604,7 @@ Section Regex.
       apply nonnull_preserves_meaning in H ; crush.
   Qed.
 
+  (** acc and Properties *)
   Fixpoint acc (r : re) (s : str) (k : str -> bool) (n : nat) :=
     match n with
     | 0 => false
