@@ -773,7 +773,7 @@ Section Regex.
     - edestruct IHr ; eauto...
       apply star_fixpoint in H6.
       destruct H6.
-      (* I know that there is a way to do this... *)
+      (* I know that there is a way to do this... ☹ *)
   Admitted.
 
   Lemma acc_complete : forall r s s1 s2 k,
