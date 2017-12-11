@@ -29,7 +29,7 @@ have a broad range of applications, and implementing them is often more complex
 than one would expect.
 
 For my project, I focused on two different methods of implementing regular
-expressions, and proved both correct. The first uses syntacitc Brzozowski
+expressions, and proved both correct. The first uses syntactic Brzozowski
 derivatives to extract an automaton from the regular expression, and the second
 relies on putting the regular expression into ``standard form''. I had
 originally planned to explore only the Brzozowski derivative approach, and I
@@ -73,7 +73,7 @@ uses the \coq{Section} and \coq{Context} mechanisms to do this formally.} The
 other important definition is the denotational semantics for regular
 expressions, shown in figure \ref{fig:in_re}. Note that the type \coq{str} is
 simply an alias for \coq{list T}. This relation defines the \emph{meaning} of a
-string \coq{s} being in the languge of a regular expression \coq{r}. In other
+string \coq{s} being in the language of a regular expression \coq{r}. In other
 words
 $$ \coq{[[ r ]] s} \qquad \equiv \qquad s \in \llbracket r \rrbracket $$
 These definitions are fairly natural, and reflect the formal definitions of
@@ -118,10 +118,15 @@ than as predicates. The transition to the current definitions took a significant
 amount of time, but resulted in much cleaner proofs.
 
 \section{The Brzozowski Derivative Approach} \label{deriv}
+My proof of the Brzozowski derivative approach goes largely as it does in the
+Lecture 20 notes, so I will not go into much detail here. Proving this algorithm
+correct was actually really fun, and fairly straightforward. It has given me
+even more appreciation for algorithms that are technically complex, but that
+have simple, elegant implementations.
 
 \section{The Standard Form Approach} \label{standard}
 In Bob Harper's 1999 paper titled Proof-Directed
-Debugging,\cite{Harper:1999:PD:968578.968582} he presents a strawman algorithm
+Debugging,\cite{Harper:1999:PD:968578.968582} he presents a straw-man algorithm
 for matching regular expressions. The function, which he calls \coq{acc}, is
 supposed to accept a string \coq{s} if and only if some initial portion of the
 string is matched by the expression \coq{r}, and the rest of the string is
@@ -148,7 +153,7 @@ Fixpoint acc (r : re) (s : str) (k : str -> bool) :=
     end
   | Alt r1 r2 => acc r1 s k || acc r2 s k
   | Cat r1 r2 => acc r1 s (fun s' => acc r2 s' k)
-  | Star r' => k s || acc r' s (fun s' => acc r s' k)
+  | Star r' => k s || acc (Cat r' r) s k
   end.
 \end{minted}
 \caption{The (incorrect) accept function.}
@@ -220,7 +225,7 @@ and helper functions.
 With a procedure for standardizing regular expressions in hand, it is possible
 to write a function to determine if a given expression matches a given string.
 First, I instrumented \coq{acc} with a fuel parameter. The function now takes an
-extrac natural number argument which decreases on each recursive call. If the
+extract natural number argument which decreases on each recursive call. If the
 parameter is ever zero, the function fails. Figure \ref{fig:match} shows the
 definition of the \coq{match_re} function, as well as the correctness condition.
 
@@ -230,23 +235,116 @@ is fully constructive, this implies that it is possible to \emph{compute} such
 an amount of fuel, and thus write a total matching function. I hope to pursue
 this line of reasoning in the future.
 
-% TODO: Stuff aout proofs
-
 \begin{figure}
   \centering
 \begin{minted}{coq}
 Definition match_re r s n := acc (standardize r) s is_nil n.
 
 Theorem match_correct : forall r s,
-  [[ r ]] s <-> exists n, match_re r s n = true.
+    [[ r ]] s <-> exists n, match_re r s n = true.
 \end{minted}
-\caption{The matching function, and the associated correctness property.}
-\label{fig:match}
+  \caption{The matching function, and the associated correctness property.}
+  \label{fig:match}
 \end{figure}
 
+The proof of this theorem relies on two important properties of the \coq{acc}
+function: soundness and completeness. Both are shown in figure \ref{fig:sandc}.
+
+\subsubsection{Soundness}
+I originally tried proving soundness by induction on \coq{r}. This seemed like
+it was working until I reached the case for \coq{Star}; no matter what I
+\coq{remember}ed or \coq{generalize}d, I could not get an induction principle
+strong enough to prove that \coq{Star} was sound. After some research, I found
+that it is possible to write arbitrarily strong induction principles using
+\coq{refine} and \coq{fix}. Rather than rely on some pre-built induction
+principle, I can build a proof term by hand. This ended up being exactly what I
+needed.
+
+The main reason that it was important for me to build my own \coq{fix} term is
+that much like the \coq{acc} function itself, I want to look at cases of
+\coq{r}, but the decreasing argument of the proof is actually the fuel parameter
+\coq{n}. My manual induction principle states this explicitly, and the type
+checker confirms that \coq{n} does, in fact, decrease.
+
+\begin{figure}
+  \centering
+\begin{minted}{coq}
+Lemma acc_sound : forall r s k n,
+    acc r s k n = true ->
+    exists s1 s2, s = s1 ++ s2 /\ [[ r ]] s1 /\ k s2 = true.
+
+Lemma acc_complete : forall r s s1 s2 k,
+    s = s1 ++ s2 ->
+    k s2 = true ->
+    [[ standardize r ]] s1 ->
+    exists n, acc (standardize r) s k n = true.
+\end{minted}
+  \caption{Soundness and completeness.}
+  \label{fig:sandc}
+\end{figure}
+
+\subsubsection{Completeness: A Post-Mortem}
+I will begin by saying that I am confident that my completeness lemma is
+correct. I have worked through examples and done plenty of proofs of
+side-lemmas, and it makes perfect sense to me that this would be true. That
+being said, despite many, many hours of work on this same lemma, I have not been
+able to prove it correct. The real work of the completeness proof is in a
+slightly different lemma that I call \coq{acc_complete'}. Rather than work with
+fully standardized expressions, this lemma attempts to show relative
+completeness for \coq{nonnull r}. Splitting the work this way got me extremely
+close to a finished solution, but I just can't figure out a way to prove the
+case for \coq{Star}.
+
+I cannot express how disappointed I am that this proof has not worked out. It
+feels like the answer is so close, but no matter how I approach it, the proof
+fails. My gut says that the proof will need to include some kind of induction on
+the number of times that \coq{Star (nonnull r)} matches the string. Put another
+way, since
+$$ \llbracket r^* \rrbracket = \bigcup_n \llbracket r^n \rrbracket $$
+it should be possible to do induction on that $n$. I have a construct
+\coq{iterate_re r n} that expresses this concept, but my efforts to use it have
+mostly just complicated the problem.
+
+If anyone reading this sees a solution that I have missed, please let me know. I
+would really like to finish this proof.
+
 \section{Evaluation} \label{eval}
+As is often the case with machine checked proof efforts, the
+proof-to-definition ratio of my code is fairly high. Conservatively, about
+100 of the 800 lines of code are definitions and algorithms, and the other 700
+lines are proof. This 7-1 ratio is actually better than some that we have seen
+over the course of the semester, but it is still a reminder that there are still
+important developments to be made in the field of proof engineering.
+
+Also on the topic of proof engineering, it may be evident that as one reads from
+older to newer proofs in my Coq code, there is an increasing use of ltac-foo and
+custom \coq{crush} tactics. While working on my soundness and completeness
+proofs, I developed a tactic called \coq{acc_simp}, which was initially intended
+to just simplify some forms of the \coq{acc} function. Over time it grew into a
+fairly powerful tactic, and eventually I introduced \coq{smash}, which does
+\coq{repeat acc_simp}. Moving forward, I will likely use \coq{Proof with smash.}
+whenever I have a complex proof to tackle.
+\\
+
+One other thing that I wanted to bring up on the topic of evaluation is the
+striking difference between proving the derivative approach correct and proving
+the standardization approach. Ignoring the fact that I actually failed to prove
+the standardization approach in its entirety, the derivative approach was far
+nicer to work with. The \coq{deriv} function seemed to lead me to the correct
+proof, whereas the \coq{acc} function led me in all sorts of wrong directions.
+In situations where my task is prove \emph{an} algorithm rather than prove
+\emph{this} algorithm, I will take care to favor ones with more obvious
+properties.
 
 \section{Conclusion} \label{conclusion}
+This whole semester has been really exciting. I have been interested in Coq and
+formal verification for a while, but this is the first time that I feel like I
+actually know enough to verify real software. Working on this project was
+certainly difficult, and I am still disappointed that my completeness proof did
+not work out, but I still feel like this was a win. It was really interesting
+exploring the properties of regular expressions from a formal methods
+perspective, rather than from a traditional theory perspective, and I am
+confident that the experience has made me better at verification.
 
 \bibliography{paper}{}
 \bibliographystyle{plain}
