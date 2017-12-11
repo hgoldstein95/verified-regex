@@ -27,21 +27,11 @@ Section Regex.
   Inductive in_re : re -> str -> Prop :=
   | In_Ept : [[ Ept ]] []
   | In_Char : forall c, [[ Char c ]] [c]
-  | In_Alt_left : forall r1 r2 s,
-      [[ r1 ]] s ->
-      [[ Alt r1 r2 ]] s
-  | In_Alt_right : forall r1 r2 s,
-      [[ r2 ]] s ->
-      [[ Alt r1 r2 ]] s
-  | In_Cat : forall r1 r2 s1 s2,
-      [[ r1 ]] s1 ->
-      [[ r2 ]] s2 ->
-      [[ Cat r1 r2 ]] (s1 ++ s2)
+  | In_Alt_left : forall r1 r2 s, [[ r1 ]] s -> [[ Alt r1 r2 ]] s
+  | In_Alt_right : forall r1 r2 s, [[ r2 ]] s -> [[ Alt r1 r2 ]] s
+  | In_Cat : forall r1 r2 s1 s2, [[ r1 ]] s1 -> [[ r2 ]] s2 -> [[ Cat r1 r2 ]] (s1 ++ s2)
   | In_Star_empty : forall r, [[ Star r ]] []
-  | In_Star_cat : forall r s1 s2,
-      [[ r ]] s1 ->
-      [[ Star r ]] s2 ->
-      [[ Star r ]] (s1 ++ s2)
+  | In_Star_cat : forall r s1 s2, [[ r ]] s1 -> [[ Star r ]] s2 -> [[ Star r ]] (s1 ++ s2)
   where "[[ r ]]" := (in_re r).
 
   Hint Constructors in_re.
@@ -622,7 +612,7 @@ Section Regex.
         end
       | Alt r1 r2 => acc r1 s k n || acc r2 s k n
       | Cat r1 r2 => acc r1 s (fun s' => acc r2 s' k n) n
-      | Star r' => k s || acc r' s (fun s' => acc r s' k n) n
+      | Star r' => k s || acc (Cat r' r) s k n
       end
     end.
 
@@ -639,7 +629,7 @@ Section Regex.
   Definition is_nil (l : str) := match l with [] => true | _ => false end.
 
   Ltac acc_simp :=
-    simpl ;
+    intros ; simpl in * ;
     try match goal with
         | [ H : _ || _ = true |- _ ] => apply orb_true_elim in H ; destruct H
         | [ H : exists _, _ |- _ ] => destruct H
@@ -654,10 +644,15 @@ Section Regex.
         | [ H : ?x <> ?x |- _ ] => contradict H ; auto
         | [ H : [[ standardize _ ]] _ |- _ ] => invert H
         | [ H : [[ null ?r ]] _ |- _ ] => dest_null r
+        | [ H : _ |- false = true \/ _ ] => right
+        | [ H : (fun _ : _ => _) _ = _ |- _ ] => simpl in H
+        | [ H : _ |- (if ?t then _ else _) = true ] => destruct t
         end ;
     auto.
 
-  Ltac clear_iter x :=
+  Ltac smash := repeat acc_simp.
+
+  Ltac dst x :=
     destruct x ; simpl in * ; try discriminate.
 
   Lemma continuation_swap : forall r s k1 k2 n,
@@ -665,89 +660,53 @@ Section Regex.
       (forall x, k1 x = true -> k2 x = true) ->
       acc r s k2 n = true.
   Proof.
-    induction r ; crush ; clear_iter n ;
-      repeat acc_simp.
+    refine (fix IH r s k1 k2 n H1 H2 {struct n} :
+              acc r s k2 n = true := _).
+    destruct r ; dst n ; repeat acc_simp.
     - destruct s ; try discriminate.
       destruct (dec_eq t t0) ; auto.
-    - left ; auto.
-      eapply IHr1 ; eauto.
-    - right ; auto.
-      eapply IHr2 ; eauto.
-    - eapply IHr1 ; eauto.
+    - left ; auto ; eapply IH ; eauto.
+    - right ; auto ; eapply IH ; eauto.
+    - eapply IH ; eauto.
       intros.
-      eapply IHr2 ; eauto.
-      simpl in H1.
+      eapply IH ; eauto.
+      simpl in *.
       auto.
-    -
-  Admitted.
+    - eapply IH in e ; eauto.
+  Qed.
 
   Lemma acc_n_greater : forall r s k n m,
       acc r s k n = true ->
       acc r s k (n + m) = true.
   Proof.
-    induction r ; crush ; clear_iter n ;
-      repeat acc_simp.
-    - apply IHr1.
+    refine (fix IH r s k n m H {struct n} :
+              acc r s k (n + m) = true := _).
+    destruct r ; dst n ; repeat acc_simp ; apply IH ;
       eapply continuation_swap ; eauto.
-    - right.
-      apply IHr.
-      eapply continuation_swap ; eauto.
-      intros.
-      simpl in H.
-  Admitted.
+  Qed.
 
-  Lemma acc_complete : forall r s s1 s2 k,
-      s = s1 ++ s2 ->
-      k s2 = true ->
-      [[ r ]] s1 ->
-      exists n, acc (standardize r) s k n = true.
+  Lemma ept_or_not : forall s : str, {s = []} + {s <> []}.
   Proof.
-    induction r ; intros ; subst ; repeat acc_simp.
-    - exists 2 ; acc_simp.
-    - exists 2 ; acc_simp.
-      destruct (dec_eq t t) ; auto.
-    - destruct (IHr1 (s1 ++ s2) s1 s2 k eq_refl H0 H4).
-      exists (S x).
-      unfold standardize in H.
-      acc_simp.
-      dest_null r1 ; dest_null r2 ; simpl ;
-        clear_iter x ; acc_simp ; acc_simp ; clear_iter x ; crush.
-    - destruct (IHr2 (s1 ++ s2) s1 s2 k) ; auto.
-      exists (S x).
-      unfold standardize in H.
-      acc_simp.
-      dest_null r1 ; dest_null r2 ; simpl ;
-        clear_iter x ; acc_simp ; acc_simp ; clear_iter x ; crush.
-    - destruct (IHr2 (s3 ++ s2) s3 s2 k) ; auto.
-      destruct (IHr1 (s0 ++ s3 ++ s2) s0 (s3 ++ s2)
-                     (fun s' => acc (standardize r2) s' k x)) ; auto.
-      exists (S (x + x0)).
-      unfold standardize in H1.
-      unfold standardize in H.
-      repeat acc_simp.
-      dest_null r1 ; dest_null r2 ; simpl in *.
-      + clear_iter x ; repeat acc_simp.
-        * clear_iter x.
-        * right.
-          clear_iter x0.
-          repeat acc_simp.
-          -- clear_iter x0.
-          -- rewrite <- plus_n_Sm.
-             repeat acc_simp.
-             right.
-             rewrite plus_comm.
-             apply acc_n_greater.
-             rewrite <- app_assoc.
-             eapply continuation_swap ; eauto.
-             intros.
-             simpl in H.
-             repeat acc_simp.
-             ++ clear_iter x.
-             ++ rewrite plus_comm.
-                apply acc_n_greater.
-                auto.
-      +
-  Abort.
+    destruct s ; auto.
+    right.
+    intro H.
+    discriminate.
+  Qed.
+
+  Lemma null_nonnull_void : forall r, null (nonnull r) = Void.
+  Proof.
+    intros.
+    induction r ; crush.
+    dest_null r1 ; auto.
+  Qed.
+
+  Lemma null_idem : forall r, null (null r) = null r.
+  Proof.
+    intros.
+    induction r ; crush ;
+      dest_null r1 ;
+      dest_null r2 ; auto.
+  Qed.
 
   Lemma acc_sound : forall r s k n,
       acc r s k n = true ->
@@ -755,29 +714,89 @@ Section Regex.
         s = s1 ++ s2 /\
         [[ r ]] s1 /\
         k s2 = true.
-  Proof.
-    induction r ; crush ; destruct n ; crush.
+  Proof with smash.
+    refine (fix IH r s k n H {struct n} :
+              exists s1 s2,
+                s = s1 ++ s2 /\
+                [[ r ]] s1 /\
+                k s2 = true := _).
+    destruct r ; destruct n ; crush.
     - exists []. exists s. auto.
     - destruct s ; try discriminate.
       destruct (dec_eq t t0) ; try discriminate.
       subst. exists [t0]. exists s. auto.
-    - acc_simp ; [ apply IHr1 in e | apply IHr2 in e ] ;
-        repeat acc_simp ;
+    - acc_simp ; apply IH in e ; smash ;
         exists x ; exists x0 ;
         crush.
-    - apply IHr1 in H.
-      repeat acc_simp.
-      apply IHr2 in H1.
-      repeat acc_simp.
+    - apply IH in H...
+      apply IH in H1...
       exists (x ++ x1). exists x2.
       crush.
-    - acc_simp.
+    - smash.
       + exists []. exists s. auto.
-      + apply IHr in e.
-        repeat acc_simp.
-        subst.
-        (* Need a way to do more induction here... *)
-  Abort.
+      + apply IH in e...
+        eexists ; eexists ; eauto.
+  Qed.
+
+  Lemma acc_complete' : forall r s s1 s2 k,
+      s = s1 ++ s2 ->
+      k s2 = true ->
+      [[ nonnull r ]] s1 ->
+      exists n, acc (nonnull r) s k n = true.
+  Proof with smash.
+    refine (fix IH r s s1 s2 k H1 H2 H3 {struct s} :
+              exists n, acc (nonnull r) s k n = true := _).
+    destruct r ; invert H3...
+    - exists 1...
+    - edestruct (IH r1) ; clear IH ; eauto.
+      exists (S x)...
+    - edestruct (IH r2) ; clear IH ; eauto.
+      exists (S x)...
+    - edestruct (IH r2) ; clear IH ; eauto.
+      exists (S (S (S x)))...
+      left... left... dst x...
+    - edestruct (IH r1) ; clear IH ; eauto.
+      exists (S (S (S x)))...
+      rewrite app_nil_r.
+      left... right... dst x...
+    - edestruct (IH r2 (s3 ++ s2)) ; eauto.
+      edestruct (IH r1 (s0 ++ (s3 ++ s2))) ; clear IH ; eauto.
+      + instantiate (1 := fun s' => acc (nonnull r2) s' k x)...
+      + exists (S (S (x + x0)))...
+        rewrite <- app_assoc.
+        right...
+        rewrite plus_comm.
+        apply acc_n_greater.
+        eapply continuation_swap ; eauto.
+        intros.
+        simpl in H3.
+        rewrite plus_comm.
+        apply acc_n_greater.
+        auto.
+    - destruct (ept_or_not s3) ; subst...
+      + rewrite app_nil_r.
+        edestruct (IH r) ; eauto...
+        exists (S x)...
+        eapply continuation_swap ; eauto...
+        dst x...
+      + apply star_fixpoint in H6.
+        destruct H6.
+
+  Lemma acc_complete : forall r s s1 s2 k,
+      s = s1 ++ s2 ->
+      k s2 = true ->
+      [[ standardize r ]] s1 ->
+      exists n, acc (standardize r) s k n = true.
+  Proof with smash.
+    intros.
+    unfold standardize in *.
+    dest_null r...
+    - edestruct (acc_complete' r) ; eauto.
+      exists (S x)...
+    - exists 2...
+    - edestruct (acc_complete' r) ; eauto.
+      exists (S x)...
+  Qed.
 
   Definition match_simple (r : re) (s : str) (n : nat) : bool :=
     acc (standardize r) s is_nil n.
@@ -788,6 +807,8 @@ Section Regex.
     intros.
     unfold match_simple.
     eapply acc_complete ; crush.
+    apply standardize_correct.
+    auto.
   Qed.
 
   Lemma match_simple_rtl :
@@ -799,7 +820,7 @@ Section Regex.
     apply standardize_correct.
     pose proof (acc_sound (standardize r) s is_nil x) ; crush.
     unfold is_nil in H3.
-    acc_simp.
+    destruct x1 ; try discriminate.
     rewrite app_nil_r.
     auto.
   Qed.

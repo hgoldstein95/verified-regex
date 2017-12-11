@@ -1,0 +1,254 @@
+\documentclass{article}
+\usepackage[margin=1.5in]{geometry}
+\usepackage{minted}
+\usepackage[bottom]{footmisc}
+\usepackage{float}
+\usepackage{stmaryrd}
+\usepackage{cite}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{subcaption}
+
+\author{Harrison Goldstein - hjg42}
+\title{CS 6115 Project}
+\date{Fall 2017}
+\newcommand{\coq}[1]{\mintinline{coq}{#1}}
+
+\RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+This semester I explored the space of provably correct regular expression
+matchers. Regular expressions are an interesting focus of study because they are
+deceptively simple. The languages that they recognize are very limited in scope,
+and they can be fully defined by just a few constructors. That being said,
+regular expressions can be extremely powerful in the right situations---they
+have a broad range of applications, and implementing them is often more complex
+than one would expect.
+
+For my project, I focused on two different methods of implementing regular
+expressions, and proved both correct. The first uses syntacitc Brzozowski
+derivatives to extract an automaton from the regular expression, and the second
+relies on putting the regular expression into ``standard form''. I had
+originally planned to explore only the Brzozowski derivative approach, and I
+made significant progress on that development during the middle third of the
+semester. Unfortunately, as I was nearing completion of my correctness proof,
+the same proofs were covered in class. Rather than throw away my work entirely,
+I decided to include parts of that exploration in addition to work on regular
+expression standardization.
+
+In section \ref{defs}, I lay out the basic definitions that I use when proving
+correctness. Section \ref{deriv} briefly covers my implementation and proof of
+the Brzozowski derivative algorithm. In section \ref{standard}, I outline my
+implementation and proof of the standardization procedure and of the associated
+matching algorithm. Finally, section \ref{eval} presents a short evaluation of
+my work, and section \ref{conclusion} concludes.
+
+
+\section{Basic Definitions} \label{defs}
+My Coq definition of regular expressions is shown in figure \ref{fig:re}. The
+only interesting thing to note is that the type is parametrized by an alphabet,
+\coq{T}.
+
+\begin{figure}
+  \centering
+\begin{minted}{coq}
+Inductive re (T : Type) : Type :=
+| Void : re
+| Ept : re
+| Char : T -> re
+| Alt : re -> re -> re
+| Cat : re -> re -> re
+| Star : re -> re.
+\end{minted}
+\caption{Regular expression definition.}
+\label{fig:re}
+\end{figure}
+ In practice, all that matters about \coq{T} is that it has decidable equality,
+which is enforced with the \coq{DecEq} type class. In the sequel, both \coq{T}
+and \coq{DecEq T} will be assumed and not written.\footnote{The Coq development
+uses the \coq{Section} and \coq{Context} mechanisms to do this formally.} The
+other important definition is the denotational semantics for regular
+expressions, shown in figure \ref{fig:in_re}. Note that the type \coq{str} is
+simply an alias for \coq{list T}. This relation defines the \emph{meaning} of a
+string \coq{s} being in the languge of a regular expression \coq{r}. In other
+words
+$$ \coq{[[ r ]] s} \qquad \equiv \qquad s \in \llbracket r \rrbracket $$
+These definitions are fairly natural, and reflect the formal definitions of
+regular expressions that are presented in theory literature.
+
+\begin{figure}
+  \centering
+\begin{minted}{coq}
+Reserved Notation "[[ r ]]" (at level 0).
+Inductive in_re : re -> str -> Prop :=
+| In_Ept : [[ Ept ]] []
+| In_Char : forall c, [[ Char c ]] [c]
+| In_Alt_left : forall r1 r2 s, [[ r1 ]] s -> [[ Alt r1 r2 ]] s
+| In_Alt_right : forall r1 r2 s, [[ r2 ]] s -> [[ Alt r1 r2 ]] s
+| In_Cat : forall r1 r2 s1 s2,
+    [[ r1 ]] s1 -> [[ r2 ]] s2 ->
+    [[ Cat r1 r2 ]] (s1 ++ s2)
+| In_Star_empty : forall r, [[ Star r ]] []
+| In_Star_cat : forall r s1 s2,
+    [[ r ]] s1 -> [[ Star r ]] s2 ->
+    [[ Star r ]] (s1 ++ s2)
+where "[[ r ]]" := (in_re r).
+
+Definition reg_eq r1 r2 := forall s, [[ r1 ]] s <-> [[ r2 ]] s.
+Infix "[=]" := reg_eq (right associativity, at level 85).
+\end{minted}
+\caption{Denotational semantics for regular expressions.}
+\label{fig:in_re}
+\end{figure}
+
+Also in figure \ref{fig:in_re}, I define regular expression equivalence in
+terms of the denotational semantics. The Coq development includes a number of
+proofs about this relation, including proving that it is a parametric relation.
+This allows for rewriting of equivalent regular expressions, in limited cases.
+
+Many of these definitions are inspired by or directly based on the work in
+Lecture 20 of CS 6115. After that lecture, I went back and refactored my
+existing code base to use the cleaner definitions presented by Professor
+Morrisett. My first approach for the denotational semantics used Coq's
+\coq{Ensemble} library, which provides tools for encoding sets directly, rather
+than as predicates. The transition to the current definitions took a significant
+amount of time, but resulted in much cleaner proofs.
+
+\section{The Brzozowski Derivative Approach} \label{deriv}
+
+\section{The Standard Form Approach} \label{standard}
+In Bob Harper's 1999 paper titled Proof-Directed
+Debugging,\cite{Harper:1999:PD:968578.968582} he presents a strawman algorithm
+for matching regular expressions. The function, which he calls \coq{acc}, is
+supposed to accept a string \coq{s} if and only if some initial portion of the
+string is matched by the expression \coq{r}, and the rest of the string is
+matched by the continuation, \coq{k}. This continuation-passing approach is
+especially elegant because it allows for backtracking to happen naturally.
+
+Unfortunately, the definition in figure \ref{fig:acc} is rejected by Coq. The
+recursive call in the \coq{Star} case recurses on \coq{r}, not on \coq{r'}, and
+thus Coq cannot determine a structurally decreasing argument. Even worse, there
+might not even be a decreasing argument! In some cases, this \coq{acc} function
+diverges and fails to determine anything at all.
+
+\begin{figure}
+  \centering
+\begin{minted}{coq}
+Fixpoint acc (r : re) (s : str) (k : str -> bool) :=
+  match r with
+  | Void => false
+  | Ept => k s
+  | Char c =>
+    match s with
+    | [] => false
+    | d :: s' => if dec_eq c d then k s' else false
+    end
+  | Alt r1 r2 => acc r1 s k || acc r2 s k
+  | Cat r1 r2 => acc r1 s (fun s' => acc r2 s' k)
+  | Star r' => k s || acc r' s (fun s' => acc r s' k)
+  end.
+\end{minted}
+\caption{The (incorrect) accept function.}
+\label{fig:acc}
+\end{figure}
+
+\subsection{Standardization}
+The paper presents a solution to this problem. It turns out that if regular
+expressions are in a specific \emph{standard form}, the \coq{acc} function is
+guaranteed to terminate. Furthermore, every regular expression can be put into
+standard form without changing its meaning. Therefore, applying a standardizing
+function and then applying \coq{acc} results in a function that terminates and
+decides whether a string is accepted by a regular expression (and a
+continuation).
+
+The standardization function is defined in terms of two other functions, shown
+in figure \ref{fig:fns}. The function $E(r)$ returns $\varepsilon$ if $r$
+contains the empty string, and $\varnothing$ otherwise. (Note that $\oplus$ and
+$\otimes$ are ``smart constructors'' for $+$ and $\cdot$ that simplify
+expressions up to denotational equality.) The function $N(r)$ is slightly more
+complicated. It satisfies the equation
+$$ \llbracket N(r) \rrbracket = \llbracket r \rrbracket - \{\varepsilon\} $$
+In the Coq code, these functions are called \coq{null} and \coq{nonnull}
+respectively.
+
+Putting these functions together, we can define the standard form as follows:
+$$ \text{std}(r) = E(r) + N(r) $$
+
+\begin{figure}
+  \centering
+  \begin{subfigure}[t]{0.45\linewidth}
+    \begin{align*}
+      E(\varnothing) &= \varnothing \\
+      E(\varepsilon) &= \varepsilon \\
+      E(c) &= \varnothing \\
+      E(r_1 + r_2) &= E(r_1) \oplus E(r_2) \\
+      E(r_1r_2) &= E(r_1) \otimes E(r_2) \\
+      E(r^*) &= \varepsilon \\
+    \end{align*}
+    \caption{The \coq{null} function.}
+  \end{subfigure}
+  \begin{subfigure}[t]{0.45\linewidth}
+    \begin{align*}
+      N(\varnothing) &= \varnothing \\
+      N(\varepsilon) &= \varnothing \\
+      N(c) &= c \\
+      N(r_1 + r_2) &= N(r_1) + N(r_2) \\
+      N(r_1r_2) &= E(r_1)N(r_2) + N(r_1)E(r_2) \\
+                     &\qquad + N(r_1)N(r_2) \\
+      N(r^*) &= N(r)N(r)^*
+    \end{align*}
+    \caption{The \coq{nonnull} function.}
+  \end{subfigure}
+  \caption{$E$ and $N$.}
+  \label{fig:fns}
+\end{figure}
+
+In the Coq development, I prove various facts about \coq{null}, \coq{nonnull},
+and \coq{standardize}. The proof that every regular expression can be
+standardized comes for free since \coq{standardize} is a function; the proof
+that \coq{standardize} produces an equivalent regular expression not nearly as
+automatic. The real effort in proving standardization correct comes when proving
+the lemma \coq{nonnull_preserves_meaning}, which asserts that for any nonempty
+string, \coq{s}, \coq{[[ r ]] s <-> [[ nonnull r ]] s}. The proof of the lemma
+is almost 100 lines of ltac, and required proof of a number of related lemmas
+and helper functions.
+
+\subsection{Match Algorithm}
+With a procedure for standardizing regular expressions in hand, it is possible
+to write a function to determine if a given expression matches a given string.
+First, I instrumented \coq{acc} with a fuel parameter. The function now takes an
+extrac natural number argument which decreases on each recursive call. If the
+parameter is ever zero, the function fails. Figure \ref{fig:match} shows the
+definition of the \coq{match_re} function, as well as the correctness condition.
+
+Note the existential quantification over \coq{n}---this says that there is some
+amount of fuel such that the match is successful. If the proof of this theorem
+is fully constructive, this implies that it is possible to \emph{compute} such
+an amount of fuel, and thus write a total matching function. I hope to pursue
+this line of reasoning in the future.
+
+% TODO: Stuff aout proofs
+
+\begin{figure}
+  \centering
+\begin{minted}{coq}
+Definition match_re r s n := acc (standardize r) s is_nil n.
+
+Theorem match_correct : forall r s,
+  [[ r ]] s <-> exists n, match_re r s n = true.
+\end{minted}
+\caption{The matching function, and the associated correctness property.}
+\label{fig:match}
+\end{figure}
+
+\section{Evaluation} \label{eval}
+
+\section{Conclusion} \label{conclusion}
+
+\bibliography{paper}{}
+\bibliographystyle{plain}
+
+\end{document}
